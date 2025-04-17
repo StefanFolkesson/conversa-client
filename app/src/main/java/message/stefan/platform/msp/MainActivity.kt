@@ -5,157 +5,250 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import message.stefan.platform.msp.network.MessageDto
 import message.stefan.platform.msp.ui.theme.MSPTheme
+import androidx.compose.runtime.livedata.observeAsState
 
 
 class MainActivity : ComponentActivity() {
-    // Hämta ViewModel, observera att vi nu använder AndroidViewModel
-    private val messageViewModel: MessageViewModel by viewModels()
+    private val vm: MessageViewModel by viewModels()  // AndroidViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MSPTheme {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    ViewMessages(
-                        messages = messageViewModel.messages,
-                        onDelete = { messageViewModel.deleteMessage(it) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    AddMessage(messageViewModel, modifier = Modifier.weight(1f))
-                }
+                ConversaApp(vm)
             }
         }
     }
 }
 
-data class Message(
-    val id: Int = 0,
-    val author: String,
-    val message: String,
-    val imageUri: String? = null
-)
 @Composable
-fun ViewMessages(
-    messages: MutableList<Message>,
-    onDelete: (Message) -> Unit,
-    modifier: Modifier = Modifier
+fun ConversaApp(vm: MessageViewModel) {
+    val context = LocalContext.current
+    val session = remember { SessionManager(context) }
+
+    // LiveData → Compose State
+    val loginResult by vm.loginState.observeAsState()
+    val messages    by vm.messages.observeAsState(emptyList())
+    val errorMsg    by vm.errorMessage.observeAsState()
+
+    // Om vi redan har token, hoppa direkt till meddelanden
+    val savedToken = session.fetchToken()
+
+    // När login lyckas: ladda meddelanden automatiskt
+    LaunchedEffect(loginResult) {
+        loginResult?.onSuccess {
+            vm.loadMessages()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        if (savedToken.isNullOrBlank()) {
+            // Visa login
+            LoginScreen(
+                loginResult = loginResult,
+                onLogin = { user, pass ->
+                    vm.login(user, pass)
+                }
+            )
+        } else {
+            // Visa meddelande‑flow
+            MessageScreen(
+                messages = messages,
+                onDelete  = { msgDto -> vm.deleteMessage(msgDto.id) },
+                onAdd     = { author, title, text, image ->
+                    vm.addMessage(author, title, text, image)
+                },
+                onRefresh = { vm.loadMessages() },
+                onLogout  = {
+                    session.clearToken()
+                    // Rensa VM‑state om du vill:
+                    vm.messages.postValue(emptyList())
+                }
+            )
+        }
+
+        // Visa fel som en enkel Text eller Snackbar
+        if (!errorMsg.isNullOrBlank()) {
+            Text(
+                text = errorMsg!!,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            )
+        }
+    }
+}
+
+
+@Composable
+fun LoginScreen(
+    loginResult: Result<String>?,
+    onLogin: (String, String) -> Unit
 ) {
-    LazyColumn(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        userScrollEnabled = true
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center
     ) {
-        items(messages) { message ->
-            ViewMessage(message = message, onDelete = onDelete)
+        OutlinedTextField(
+            value = user,
+            onValueChange = { user = it },
+            label = { Text("Användarnamn") },
+            singleLine = true
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = pass,
+            onValueChange = { pass = it },
+            label = { Text("Lösenord") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { onLogin(user, pass) },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Logga in")
+        }
+        // Visa spinner eller loader om inloggningen pågår
+        loginResult?.let {
+            if (it.isFailure) {
+                Text(
+                    text = it.exceptionOrNull()?.localizedMessage ?: "Okänt fel",
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
-fun AddMessage(
-    viewModel: MessageViewModel,
-    modifier: Modifier = Modifier
+fun MessageScreen(
+    messages: List<MessageDto>,
+    onDelete: (MessageDto) -> Unit,
+    onAdd:    (author: String, title: String, text: String, image: String) -> Unit,
+    onRefresh: () -> Unit,
+    onLogout:  () -> Unit
 ) {
-    var text by remember { mutableStateOf("") }
-    var url by remember { mutableStateOf("") }
-    var forfattare by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Meddelanden", style = MaterialTheme.typography.titleMedium)
+            Button(onClick = onLogout) {
+                Text("Logga ut")
+            }
+        }
+
+        Button(
+            onClick = onRefresh,
+            modifier = Modifier.align(Alignment.End).padding(8.dp)
+        ) {
+            Text("Ladda om")
+        }
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(messages) { msg ->
+                Card(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(msg.title, style = MaterialTheme.typography.titleSmall)
+                        Text(msg.message, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Av ${msg.display_name} @ ${msg.date}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(onClick = { onDelete(msg) }) {
+                            Text("Radera")
+                        }
+                    }
+                }
+            }
+        }
+
+        AddMessageForm(onAdd = onAdd)
+    }
+}
+
+@Composable
+fun AddMessageForm(
+    onAdd: (author: String, title: String, text: String, image: String) -> Unit
+) {
+    var author by remember { mutableStateOf("") }
+    var title  by remember { mutableStateOf("") }
+    var text   by remember { mutableStateOf("") }
+    var image  by remember { mutableStateOf("") }
+
     Column(
-        modifier = modifier
+        Modifier
             .fillMaxWidth()
             .padding(16.dp)
     ) {
-        TextField(
+        OutlinedTextField(
+            value = author,
+            onValueChange = { author = it },
+            label = { Text("Författare") }
+        )
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = title,
+            onValueChange = { title = it },
+            label = { Text("Titel") }
+        )
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
             value = text,
             onValueChange = { text = it },
             label = { Text("Meddelande") }
         )
-        TextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text("Bildadress") }
+        Spacer(Modifier.height(4.dp))
+        OutlinedTextField(
+            value = image,
+            onValueChange = { image = it },
+            label = { Text("Bild-URL (valfritt)") }
         )
-        TextField(
-            value = forfattare,
-            onValueChange = { forfattare = it },
-            label = { Text("Författare") }
-        )
-        Button(
-            onClick = {
-                // Skapa nytt meddelande med id 0 (Room genererar ett nytt id)
-                val newMessage = Message(0, forfattare, text, url)
-                viewModel.addMessage(newMessage)
-                // Töm fälten efter inskickning (om så önskas)
-                text = ""
-                url = ""
-                forfattare = ""
-            }
-        ) {
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = {
+            onAdd(author, title, text, image)
+            author = ""; title = ""; text = ""; image = ""
+        }, Modifier.fillMaxWidth()) {
             Text("Skicka post")
         }
     }
 }
-@Composable
-fun ViewMessage(message: Message, onDelete: (Message) -> Unit, modifier: Modifier = Modifier) {
-    Column {
-        Row(
-            modifier = modifier
-                .padding(2.dp)
-                .fillMaxWidth()
-        ) {
-            Text(
-                text = message.author,
-                modifier = Modifier
-                    .padding(end = 10.dp)
-                    .weight(1f),
-                fontSize = 12.sp
-            )
-            Text(
-                text = message.message,
-                modifier = Modifier.weight(1f),
-                fontSize = 12.sp
-            )
-            Button(onClick = { onDelete(message) }) {
-                Text("Radera")
-            }
-        }
-        if (!message.imageUri.isNullOrEmpty()) {
-            AsyncImage(
-                model = message.imageUri,
-                contentDescription = "Meddelandets bild",
-                modifier = Modifier
-                    .size(100.dp)
-                    .padding(top = 4.dp)
-            )
-        }
-    }
-}
-
-
-
 
