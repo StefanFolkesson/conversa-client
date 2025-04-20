@@ -50,17 +50,19 @@ fun ConversaApp(vm: MessageViewModel) {
     // LiveData → Compose State
     val loginResult by vm.loginState.observeAsState()
     val messages    by vm.messages.observeAsState(emptyList())
-    val errorMsg    by vm.errorMessage.observeAsState()
+
 
     // Om vi redan har token, hoppa direkt till meddelanden
     val savedToken = session.fetchToken()
 
     // När login lyckas: ladda meddelanden automatiskt
-    LaunchedEffect(loginResult) {
-        loginResult?.onSuccess {
+    // Endast ett ställe som laddar om meddelanden när token finns
+    LaunchedEffect(savedToken) {
+        if (!savedToken.isNullOrBlank()) {
             vm.loadMessages()
         }
     }
+
 
     Box(Modifier.fillMaxSize()) {
         if (savedToken.isNullOrBlank()) {
@@ -76,28 +78,18 @@ fun ConversaApp(vm: MessageViewModel) {
             MessageScreen(
                 messages = messages,
                 onDelete  = { msgDto -> vm.deleteMessage(msgDto.id) },
-                onAdd     = { author, title, text, image ->
-                    vm.addMessage(author, title, text, image)
+                onAdd     = { title, text, image ->
+                    vm.addMessage(title, text, image)
                 },
                 onRefresh = { vm.loadMessages() },
                 onLogout  = {
-                    session.clearToken()
+                    session.clearSession()
                     // Rensa VM‑state om du vill:
                     vm.messages.postValue(emptyList())
                 }
             )
         }
 
-        // Visa fel som en enkel Text eller Snackbar
-        if (!errorMsg.isNullOrBlank()) {
-            Text(
-                text = errorMsg!!,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp)
-            )
-        }
     }
 }
 
@@ -154,7 +146,7 @@ fun LoginScreen(
 fun MessageScreen(
     messages: List<MessageDto>,
     onDelete: (MessageDto) -> Unit,
-    onAdd:    (author: String, title: String, text: String, image: String) -> Unit,
+    onAdd:    ( title: String, text: String, image: String) -> Unit,
     onRefresh: () -> Unit,
     onLogout:  () -> Unit
 ) {
@@ -207,9 +199,8 @@ fun MessageScreen(
 
 @Composable
 fun AddMessageForm(
-    onAdd: (author: String, title: String, text: String, image: String) -> Unit
+    onAdd: (title: String, text: String, image: String) -> Unit
 ) {
-    var author by remember { mutableStateOf("") }
     var title  by remember { mutableStateOf("") }
     var text   by remember { mutableStateOf("") }
     var image  by remember { mutableStateOf("") }
@@ -219,11 +210,6 @@ fun AddMessageForm(
             .fillMaxWidth()
             .padding(16.dp)
     ) {
-        OutlinedTextField(
-            value = author,
-            onValueChange = { author = it },
-            label = { Text("Författare") }
-        )
         Spacer(Modifier.height(4.dp))
         OutlinedTextField(
             value = title,
@@ -244,8 +230,8 @@ fun AddMessageForm(
         )
         Spacer(Modifier.height(8.dp))
         Button(onClick = {
-            onAdd(author, title, text, image)
-            author = ""; title = ""; text = ""; image = ""
+            onAdd(title, text, image)
+            title = ""; text = ""; image = ""
         }, Modifier.fillMaxWidth()) {
             Text("Skicka post")
         }

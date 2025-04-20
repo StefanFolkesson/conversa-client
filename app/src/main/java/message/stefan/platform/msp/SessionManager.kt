@@ -15,7 +15,23 @@ class SessionManager(context: Context) {
     fun fetchToken(): String? =
         prefs.getString("auth_token", null)
 
-    fun clearToken() = prefs.edit()
+    fun saveUserId(id: Int) = prefs.edit()
+        .putInt("user_id", id)
+        .apply()
+
+    fun fetchUserId(): Int =
+        prefs.getInt("user_id", -1) // -1 = inget sparat
+
+    fun saveIsAdmin(isAdmin: Boolean) = prefs.edit()
+        .putBoolean("is_admin", isAdmin)
+        .apply()
+
+    fun fetchIsAdmin(): Boolean =
+        prefs.getBoolean("is_admin", false)
+
+    fun clearSession() = prefs.edit()
         .remove("auth_token")
+        .remove("user_id")
+        .remove("is_admin")
         .apply()
 }

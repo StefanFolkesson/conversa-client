@@ -4,7 +4,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 object RetrofitInstance {
-    private const val BASE_URL = "https://dinserver.se/path/to/" // Uppdatera med din domän och eventuell mapp
+    private const val BASE_URL = "https://conversa-api.ntigskovde.se/" // Uppdatera med din domän och eventuell mapp
 
     val api: ApiService by lazy {
         Retrofit.Builder()

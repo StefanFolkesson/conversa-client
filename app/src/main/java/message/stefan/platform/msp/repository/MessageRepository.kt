@@ -12,7 +12,7 @@ class MessageRepository(private val api: ApiService) {
     suspend fun getAll(token: String) =
         api.getAllMessages(token = token)
 
-    suspend fun add(token: String, author: String, title: String, message: String, image: String) =
+    suspend fun add(token: String, author: Int, title: String, message: String, image: String) =
         api.addMessage(token = token, author = author, title = title, message = message, image = image)
 
     suspend fun update(token: String, id: Int, author: String, title: String, message: String, image: String) =

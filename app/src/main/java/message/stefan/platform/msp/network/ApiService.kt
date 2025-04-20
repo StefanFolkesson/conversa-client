@@ -23,10 +23,9 @@ interface ApiService {
     @FormUrlEncoded
     @POST("conversa.php")
     suspend fun addMessage(
-        @Query("validate") validate: String = "1",
         @Query("token")    token:    String,
         @Field("add")      add:      String = "1",
-        @Field("data[author]")  author: String,
+        @Field("data[author]")  author: Int,
         @Field("data[title]")   title:  String,
         @Field("data[message]") message:String,
         @Field("data[image]")   image:  String
@@ -36,7 +35,6 @@ interface ApiService {
     @FormUrlEncoded
     @POST("conversa.php")
     suspend fun updateMessage(
-        @Query("validate") validate: String = "1",
         @Query("token")    token:    String,
         @Field("update")   update:   String = "1",
         @Field("id")       id:       Int,
@@ -50,7 +48,6 @@ interface ApiService {
     @FormUrlEncoded
     @POST("conversa.php")
     suspend fun deleteMessage(
-        @Query("validate") validate: String = "1",
         @Query("token")    token:    String,
         @Field("delete")   delete:   String = "1",
         @Field("id")       id:       Int
