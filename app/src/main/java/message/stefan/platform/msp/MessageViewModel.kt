@@ -115,7 +115,7 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 Toast.makeText(
                     getApplication(),
-                    "Failed to delete message: ${body?.message}",
+                    "Failed to logout: ${body?.message}",
                     Toast.LENGTH_SHORT
                 ).show()
             }

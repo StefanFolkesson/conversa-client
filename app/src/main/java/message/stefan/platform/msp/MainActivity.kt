@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import message.stefan.platform.msp.network.MessageDto
 import message.stefan.platform.msp.ui.theme.MSPTheme
 import androidx.compose.runtime.livedata.observeAsState
+import coil.compose.AsyncImage
 
 
 class MainActivity : ComponentActivity() {
@@ -65,7 +67,7 @@ fun ConversaApp(vm: MessageViewModel) {
     }
 
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().padding(10.dp)) {
         if (savedToken.isNullOrBlank()) {
             // Visa login
             LoginScreen(
@@ -88,7 +90,8 @@ fun ConversaApp(vm: MessageViewModel) {
                     // Rensa VM‑state om du vill:
                     vm.messages.postValue(emptyList())
                     vm.logout()
-                }
+                },
+                session = session
             )
         }
 
@@ -150,7 +153,8 @@ fun MessageScreen(
     onDelete: (MessageDto) -> Unit,
     onAdd:    ( title: String, text: String, image: String) -> Unit,
     onRefresh: () -> Unit,
-    onLogout:  () -> Unit
+    onLogout:  () -> Unit,
+    session: SessionManager
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -187,8 +191,17 @@ fun MessageScreen(
                             "Av ${msg.display_name} @ ${msg.date}",
                             style = MaterialTheme.typography.bodySmall
                         )
-                        Button(onClick = { onDelete(msg) }) {
-                            Text("Radera")
+                        msg.image?.let { uri -> AsyncImage(
+                            model = uri,
+                            contentDescription = "Meddelandets bild",
+                            modifier = Modifier
+                                .size(100.dp)
+                                .padding(top = 4.dp)
+                        ) }
+                        if(msg.author.toInt()==session.fetchUserId()) {
+                            Button(onClick = { onDelete(msg) }) {
+                                Text("Radera")
+                            }
                         }
                     }
                 }
