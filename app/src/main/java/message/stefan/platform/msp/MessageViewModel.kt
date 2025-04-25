@@ -104,4 +104,22 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
                 Toast.makeText(getApplication(), "Failed to delete message: ${body?.message}", Toast.LENGTH_SHORT).show()
         }
     }
+    fun logout(){
+        val token = session.fetchToken() ?:return
+        viewModelScope.launch {
+            val resp = repo.logout(token)
+            val body = resp.body()
+            if (body?.status == "success" && resp.isSuccessful) {
+                session.clearSession()
+
+            } else {
+                Toast.makeText(
+                    getApplication(),
+                    "Failed to delete message: ${body?.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+    }
 }

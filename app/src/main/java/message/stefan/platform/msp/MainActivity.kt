@@ -39,6 +39,7 @@ class MainActivity : ComponentActivity() {
                 ConversaApp(vm)
             }
         }
+
     }
 }
 
@@ -86,6 +87,7 @@ fun ConversaApp(vm: MessageViewModel) {
                     session.clearSession()
                     // Rensa VM‑state om du vill:
                     vm.messages.postValue(emptyList())
+                    vm.logout()
                 }
             )
         }

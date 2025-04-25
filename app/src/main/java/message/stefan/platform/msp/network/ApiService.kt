@@ -52,4 +52,12 @@ interface ApiService {
         @Field("delete")   delete:   String = "1",
         @Field("id")       id:       Int
     ): Response<ApiResponse>
+
+    // Logout
+    @FormUrlEncoded
+    @POST("converse.php")
+    suspend fun logout(
+        @Query("token")     token: String,
+        @Field("logout")    logout:      String = "1"
+    ): Response<ApiResponse>
 }

@@ -20,4 +20,8 @@ class MessageRepository(private val api: ApiService) {
 
     suspend fun delete(token: String, id: Int) =
         api.deleteMessage(token = token, id = id)
+
+    suspend fun logout(token: String) =
+        api.logout(token = token)
+
 }
