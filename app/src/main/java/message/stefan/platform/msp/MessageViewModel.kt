@@ -74,7 +74,7 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
         if (authorId < 0) return
         viewModelScope.launch {
             Log.d("AAA", "token: $token, author: $authorId, title: $title, message: $message, image: $image")
-            val resp = repo.add(token, authorId, title, message, image)
+            val resp = repo.add(token, authorId, title, message, image, target=0)
             val body = resp.body()
             if (body?.status == "success" && resp.isSuccessful)
                 loadMessages()
@@ -82,7 +82,7 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
                 Toast.makeText(getApplication(), "Failed to add message: ${body?.message}", Toast.LENGTH_SHORT).show()
         }
     }
-    fun updateMessage(id: Int, author: String, title: String, message: String, image: String) {
+    fun updateMessage(id: Int, author: Int, title: String, message: String, image: String) {
         val token = session.fetchToken() ?: return
         viewModelScope.launch {
             val resp = repo.update(token, id, author, title, message, image)

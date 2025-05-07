@@ -59,10 +59,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     // Lägg in Room-dependencies
-    val roomVersion = "2.5.2"
-    implementation("androidx.room:room-runtime:$roomVersion")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    kapt("androidx.room:room-compiler:$roomVersion")
+
     // Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     // Gson-konverterare för Retrofit

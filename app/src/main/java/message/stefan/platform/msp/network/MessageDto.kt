@@ -7,5 +7,6 @@ data class MessageDto(
     val message: String,
     val image: String,
     val date: String,
-    val author: String
+    val author: String,
+    val target: Int
 )

@@ -28,7 +28,9 @@ interface ApiService {
         @Field("data[author]")  author: Int,
         @Field("data[title]")   title:  String,
         @Field("data[message]") message:String,
-        @Field("data[image]")   image:  String
+        @Field("data[image]")   image:  String,
+        @Field("data[target]")    target:   Int
+
     ): Response<ApiResponse>
 
     // Uppdatera
@@ -38,7 +40,7 @@ interface ApiService {
         @Query("token")    token:    String,
         @Field("update")   update:   String = "1",
         @Field("id")       id:       Int,
-        @Field("data[author]")  author: String,
+        @Field("data[author]")  author: Int,
         @Field("data[title]")   title:  String,
         @Field("data[message]") message:String,
         @Field("data[image]")   image:  String
