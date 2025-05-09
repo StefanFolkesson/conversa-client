@@ -1,7 +1,6 @@
 package message.stefan.platform.msp
 
 import android.app.Application
-import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,12 +18,18 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
     private val session = SessionManager(getApplication())
     private val repo    = MessageRepository(RetrofitInstance.api)
 
-    // StateFlows exposed to Compose
     private val _loginState = MutableStateFlow<UiState<String>>(UiState.Idle)
     val loginState: StateFlow<UiState<String>> = _loginState
 
     private val _messages = MutableStateFlow<List<MessageDto>>(emptyList())
     val messages: StateFlow<List<MessageDto>> = _messages.asStateFlow()
+
+    private val _uiMessage = MutableStateFlow<String?>(null)
+    val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
+
+    fun clearMessage() {
+        _uiMessage.value = null
+    }
 
     fun login(username: String, password: String) {
         viewModelScope.launch {
@@ -53,7 +58,7 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMessages() {
         val token = session.fetchToken()
         if (token.isNullOrBlank()) {
-            Toast.makeText(getApplication(), "No token", Toast.LENGTH_SHORT).show()
+            _uiMessage.value = "Ingen token tillgänglig"
             return
         }
         viewModelScope.launch {
@@ -64,7 +69,7 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
             }.onSuccess { list ->
                 _messages.value = list
             }.onFailure { ex ->
-                Toast.makeText(getApplication(), "Failed to load messages: ${ex.message}", Toast.LENGTH_SHORT).show()
+                _uiMessage.value = "Kunde inte hämta meddelanden: ${ex.message}"
             }
         }
     }
@@ -77,10 +82,12 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
             Log.d("AAA", "token: $token, author: $authorId, title: $title, message: $message, image: $image")
             val resp = repo.add(token, authorId, title, message, image, target = 0)
             val body = resp.body()
-            if (body?.status == "success" && resp.isSuccessful)
+            if (body?.status == "success" && resp.isSuccessful) {
                 loadMessages()
-            else
-                Toast.makeText(getApplication(), "Failed to add message: ${body?.message}", Toast.LENGTH_SHORT).show()
+                _uiMessage.value = "Meddelande skickat"
+            } else {
+                _uiMessage.value = "Kunde inte skicka: ${body?.message}"
+            }
         }
     }
 
@@ -89,10 +96,12 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val resp = repo.update(token, id, author, title, message, image)
             val body = resp.body()
-            if (body?.status == "success" && resp.isSuccessful)
+            if (body?.status == "success" && resp.isSuccessful) {
                 loadMessages()
-            else
-                Toast.makeText(getApplication(), "Failed to update message: ${body?.message}", Toast.LENGTH_SHORT).show()
+                _uiMessage.value = "Uppdaterat"
+            } else {
+                _uiMessage.value = "Misslyckades uppdatera: ${body?.message}"
+            }
         }
     }
 
@@ -101,10 +110,12 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val resp = repo.delete(token, id)
             val body = resp.body()
-            if (body?.status == "success" && resp.isSuccessful)
+            if (body?.status == "success" && resp.isSuccessful) {
                 loadMessages()
-            else
-                Toast.makeText(getApplication(), "Failed to delete message: ${body?.message}", Toast.LENGTH_SHORT).show()
+                _uiMessage.value = "Raderat"
+            } else {
+                _uiMessage.value = "Misslyckades radera: ${body?.message}"
+            }
         }
     }
 
@@ -117,8 +128,9 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
                 session.clearSession()
                 _messages.value = emptyList()
                 _loginState.value = UiState.Idle
+                _uiMessage.value = "Utloggad"
             } else {
-                Toast.makeText(getApplication(), "Failed to logout: ${body?.message}", Toast.LENGTH_SHORT).show()
+                _uiMessage.value = "Utloggning misslyckades: ${body?.message}"
             }
         }
     }
