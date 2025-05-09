@@ -5,18 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,14 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import message.stefan.platform.msp.network.MessageDto
-import message.stefan.platform.msp.ui.theme.MSPTheme
-import androidx.compose.runtime.livedata.observeAsState
 import coil.compose.AsyncImage
-
+import kotlinx.coroutines.launch
+import message.stefan.platform.msp.network.MessageDto
+import message.stefan.platform.msp.ui.state.UiState
+import message.stefan.platform.msp.ui.theme.MSPTheme
 
 class MainActivity : ComponentActivity() {
-    private val vm: MessageViewModel by viewModels()  // AndroidViewModel
+    private val vm: MessageViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,7 +34,6 @@ class MainActivity : ComponentActivity() {
                 ConversaApp(vm)
             }
         }
-
     }
 }
 
@@ -50,62 +42,70 @@ fun ConversaApp(vm: MessageViewModel) {
     val context = LocalContext.current
     val session = remember { SessionManager(context) }
 
-    // LiveData → Compose State
-    val loginResult by vm.loginState.observeAsState()
-    val messages    by vm.messages.observeAsState(emptyList())
+    val loginState by vm.loginState.collectAsState()
+    val messages by vm.messages.collectAsState()
 
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Om vi redan har token, hoppa direkt till meddelanden
-    val savedToken = session.fetchToken()
+    var tokenState by remember { mutableStateOf(session.fetchToken()) }
 
-    // När login lyckas: ladda meddelanden automatiskt
-    // Endast ett ställe som laddar om meddelanden när token finns
-    LaunchedEffect(savedToken) {
-        if (!savedToken.isNullOrBlank()) {
-            vm.loadMessages()
+    // Update token after login
+    LaunchedEffect(loginState) {
+        if (loginState is UiState.Success) {
+            tokenState = session.fetchToken()
         }
     }
 
-
-    Box(Modifier.fillMaxSize().padding(10.dp)) {
-        if (savedToken.isNullOrBlank()) {
-            // Visa login
-            LoginScreen(
-                loginResult = loginResult,
-                onLogin = { user, pass ->
-                    vm.login(user, pass)
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(10.dp)
+        ) {
+            if (tokenState.isNullOrBlank()) {
+                key(tokenState) {
+                    LoginScreen(
+                        loginState = loginState,
+                        onLogin = { user, pass -> vm.login(user, pass) },
+                        snackbarHostState = snackbarHostState
+                    )
                 }
-            )
-        } else {
-            // Visa meddelande‑flow
-            MessageScreen(
-                messages = messages,
-                onDelete  = { msgDto -> vm.deleteMessage(msgDto.id) },
-                onAdd     = { title, text, image ->
-                    vm.addMessage(title, text, image)
-                },
-                onRefresh = { vm.loadMessages() },
-                onLogout  = {
-                    session.clearSession()
-                    // Rensa VM‑state om du vill:
-                    vm.messages.postValue(emptyList())
-                    vm.logout()
-                },
-                session = session
-            )
+            } else {
+                MessageScreen(
+                    messages = messages,
+                    onDelete = { msgDto -> vm.deleteMessage(msgDto.id) },
+                    onAdd = { title, text, image -> vm.addMessage(title, text, image) },
+                    onRefresh = { vm.loadMessages() },
+                    onLogout = {
+                        session.clearSession()
+                        vm.logout()
+                        tokenState = null
+                    },
+                    session = session
+                )
+            }
         }
-
     }
 }
 
-
 @Composable
 fun LoginScreen(
-    loginResult: Result<String>?,
-    onLogin: (String, String) -> Unit
+    loginState: UiState<String>,
+    onLogin: (String, String) -> Unit,
+    snackbarHostState: SnackbarHostState
 ) {
-    var user by remember { mutableStateOf("") }
-    var pass by remember { mutableStateOf("") }
+    // Use a stable trigger to reset form
+    val resetKey = (loginState as? UiState.Success)?.data ?: "fresh"
+
+    var user by remember(resetKey) { mutableStateOf("") }
+    var pass by remember(resetKey) { mutableStateOf("") }
+
+    LaunchedEffect(loginState) {
+        if (loginState is UiState.Error) {
+            snackbarHostState.showSnackbar(loginState.message)
+        }
+    }
 
     Column(
         Modifier
@@ -134,15 +134,10 @@ fun LoginScreen(
         ) {
             Text("Logga in")
         }
-        // Visa spinner eller loader om inloggningen pågår
-        loginResult?.let {
-            if (it.isFailure) {
-                Text(
-                    text = it.exceptionOrNull()?.localizedMessage ?: "Okänt fel",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+
+        if (loginState is UiState.Loading) {
+            Spacer(Modifier.height(16.dp))
+            CircularProgressIndicator()
         }
     }
 }
@@ -151,98 +146,113 @@ fun LoginScreen(
 fun MessageScreen(
     messages: List<MessageDto>,
     onDelete: (MessageDto) -> Unit,
-    onAdd:    ( title: String, text: String, image: String) -> Unit,
+    onAdd: (title: String, text: String, image: String) -> Unit,
     onRefresh: () -> Unit,
-    onLogout:  () -> Unit,
+    onLogout: () -> Unit,
     session: SessionManager
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Meddelanden", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = onLogout) {
-                Text("Logga ut")
+    var showDialog by remember { mutableStateOf(false) }
+
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = "Lägg till meddelande")
             }
         }
-
-        Button(
-            onClick = onRefresh,
-            modifier = Modifier.align(Alignment.End).padding(8.dp)
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
         ) {
-            Text("Ladda om")
-        }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Meddelanden", style = MaterialTheme.typography.titleMedium)
+                Button(onClick = onLogout) {
+                    Text("Logga ut")
+                }
+            }
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(messages) { msg ->
-                Card(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(msg.title, style = MaterialTheme.typography.titleSmall)
-                        Text(msg.message, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Av ${msg.display_name} @ ${msg.date}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        msg.image?.let { uri -> AsyncImage(
-                            model = uri,
-                            contentDescription = "Meddelandets bild",
-                            modifier = Modifier
-                                .size(100.dp)
-                                .padding(top = 4.dp)
-                        ) }
-                        if(msg.author.toInt()==session.fetchUserId()) {
-                            Button(onClick = { onDelete(msg) }) {
-                                Text("Radera")
+            Button(
+                onClick = onRefresh,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(8.dp)
+            ) {
+                Text("Ladda om")
+            }
+
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(messages) { msg ->
+                    Card(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(msg.title, style = MaterialTheme.typography.titleSmall)
+                            Text(msg.message, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Av ${msg.display_name} @ ${msg.date}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+
+                            msg.image.takeIf { it.isNotBlank() }?.let { uri ->
+                                AsyncImage(
+                                    model = uri,
+                                    contentDescription = "Meddelandets bild",
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .padding(top = 4.dp)
+                                )
+                            }
+
+                            msg.author.toIntOrNull()?.let { authorId ->
+                                if (authorId == session.fetchUserId()) {
+                                    Button(onClick = { onDelete(msg) }) {
+                                        Text("Radera")
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
 
-        AddMessageForm(onAdd = onAdd)
+    if (showDialog) {
+        AddMessageDialog(
+            onDismiss = { showDialog = false },
+            onSubmit = { title, text, image ->
+                onAdd(title, text, image)
+                showDialog = false
+            }
+        )
     }
 }
 
 @Composable
-fun AddMessageForm(
-    onAdd: (title: String, text: String, image: String) -> Unit
-) {
-    var title  by remember { mutableStateOf("") }
-    var text   by remember { mutableStateOf("") }
-    var image  by remember { mutableStateOf("") }
+fun AddMessageForm(onAdd: (title: String, text: String, image: String) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    var image by remember { mutableStateOf("") }
 
     Column(
         Modifier
             .fillMaxWidth()
             .padding(16.dp)
     ) {
+        OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Titel") })
         Spacer(Modifier.height(4.dp))
-        OutlinedTextField(
-            value = title,
-            onValueChange = { title = it },
-            label = { Text("Titel") }
-        )
+        OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Meddelande") })
         Spacer(Modifier.height(4.dp))
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            label = { Text("Meddelande") }
-        )
-        Spacer(Modifier.height(4.dp))
-        OutlinedTextField(
-            value = image,
-            onValueChange = { image = it },
-            label = { Text("Bild-URL (valfritt)") }
-        )
+        OutlinedTextField(value = image, onValueChange = { image = it }, label = { Text("Bild-URL (valfritt)") })
         Spacer(Modifier.height(8.dp))
         Button(onClick = {
             onAdd(title, text, image)
@@ -251,5 +261,54 @@ fun AddMessageForm(
             Text("Skicka post")
         }
     }
+}
+@Composable
+fun AddMessageDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (title: String, text: String, image: String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    var image by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                onSubmit(title, text, image)
+                title = ""; text = ""; image = ""
+            }) {
+                Text("Skicka")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Avbryt")
+            }
+        },
+        title = { Text("Nytt meddelande") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Titel") },
+                    singleLine = true
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Meddelande") }
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = image,
+                    onValueChange = { image = it },
+                    label = { Text("Bild-URL (valfritt)") }
+                )
+            }
+        }
+    )
 }
 

@@ -57,7 +57,7 @@ interface ApiService {
 
     // Logout
     @FormUrlEncoded
-    @POST("converse.php")
+    @POST("conversa.php")
     suspend fun logout(
         @Query("token")     token: String,
         @Field("logout")    logout:      String = "1"
