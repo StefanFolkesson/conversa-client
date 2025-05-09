@@ -1,6 +1,12 @@
 package message.stefan.platform.msp
 
+import android.os.*
 import android.os.Bundle
+import android.Manifest
+import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -17,7 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import message.stefan.platform.msp.network.MessageDto
 import message.stefan.platform.msp.ui.state.UiState
@@ -28,6 +37,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+        }
         enableEdgeToEdge()
         setContent {
             MSPTheme {
@@ -53,6 +65,12 @@ fun ConversaApp(vm: MessageViewModel) {
     LaunchedEffect(loginState) {
         if (loginState is UiState.Success) {
             tokenState = session.fetchToken()
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            vm.loadMessages()
+            delay(15_000) // Every 15 seconds
         }
     }
 
@@ -106,6 +124,7 @@ fun LoginScreen(
             snackbarHostState.showSnackbar(loginState.message)
         }
     }
+
 
     Column(
         Modifier
@@ -311,4 +330,27 @@ fun AddMessageDialog(
         }
     )
 }
+fun Application.sendNewMessageNotification(title: String, text: String) {
+    val channelId = "msg_alerts"
+    val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+            channelId,
+            "Meddelanden",
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        manager.createNotificationChannel(channel)
+    }
+
+    val notification = NotificationCompat.Builder(this, channelId)
+        .setSmallIcon(android.R.drawable.ic_dialog_email)
+        .setContentTitle(title)
+        .setContentText(text)
+        .setAutoCancel(true)
+        .build()
+
+    manager.notify(System.currentTimeMillis().toInt(), notification)
+}
+
 

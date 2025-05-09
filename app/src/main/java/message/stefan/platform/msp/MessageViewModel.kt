@@ -61,19 +61,27 @@ class MessageViewModel(app: Application) : AndroidViewModel(app) {
             _uiMessage.value = "Ingen token tillgänglig"
             return
         }
+
         viewModelScope.launch {
             runCatching {
                 val resp = repo.getAll(token)
                 if (resp.isSuccessful) resp.body()!!
                 else throw RuntimeException("Fetch failed: ${resp.message()}")
             }.onSuccess { list ->
+                val previousCount = _messages.value.size
                 _messages.value = list
+                if (list.size > previousCount && previousCount != 0) {
+                    val latest = list.first()
+                    getApplication<Application>().sendNewMessageNotification(
+                        latest.title,
+                        latest.message
+                    )
+                }
             }.onFailure { ex ->
                 _uiMessage.value = "Kunde inte hämta meddelanden: ${ex.message}"
             }
         }
     }
-
     fun addMessage(title: String, message: String, image: String) {
         val token = session.fetchToken() ?: return
         val authorId = session.fetchUserId()
